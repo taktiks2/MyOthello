@@ -24,8 +24,10 @@ space = 0
 
 # lists
 board = []
+board_memory = []
 for index in range(BOARD_SIZE):
     board.append([0] * BOARD_SIZE)
+    board_memory.append([0] * BOARD_SIZE)
 
 process = {
     'title': 0,
@@ -79,7 +81,8 @@ def main():
                     space -= 1
                     phase = process['change_turn']
         elif turn == COM:
-            row, column = com_ai(color[turn])
+            trial = [300, 300, 240, 180, 120, 60, 1]
+            row, column = com_ai(color[turn], trial[int(space / 10)])
             place_stone(row, column, color[turn])
             space -= 1
             phase = process['change_turn']
@@ -92,10 +95,10 @@ def main():
     elif phase == process['search_placeable']:
         if space == 0:
             phase = process['judge_winner']
-        elif judge_placeable(BLACK) == False and judge_placeable(WHITE) == False:
+        elif not judge_placeable(BLACK) and not judge_placeable(WHITE):
             tkm.showinfo('', 'Finished')
             phase = process['judge_winner']
-        elif judge_placeable(color[turn]) == False:
+        elif not judge_placeable(color[turn]):
             tkm.showinfo('', f'{who[turn]} passed')
             phase = process['change_turn']
         else:
@@ -106,22 +109,72 @@ def main():
         tkm.showinfo('Finished', f'Black={black_stone}, White={white_stone}')
         if black_stone == white_stone:
             tkm.showinfo('', 'Draw')
-        elif (color[PLAYER]==BLACK and black_stone > white_stone) \
-            or (color[PLAYER]==WHITE and white_stone > black_stone):
+        elif (color[PLAYER] == BLACK and black_stone > white_stone) \
+                or (color[PLAYER] == WHITE and white_stone > black_stone):
             tkm.showinfo('', 'You win!')
         else:
             tkm.showinfo('', 'Computer win!')
         phase = process['title']
-
     root.after(100, main)
 
 
-def com_ai(color):
+def com_ai(com_color, loop):
+    global msg
+    win_cell_counter = [0] * (BOARD_SIZE ** 2)
+    save_board()
+    for row in range(BOARD_SIZE):
+        for column in range(BOARD_SIZE):
+            if count_placeable(row, column, com_color) > 0:
+                msg += '.'
+                draw_board()
+                win_cell_counter[column + (row * BOARD_SIZE)] = 1
+                for count in range(loop):
+                    place_stone(row, column, com_color)
+                    simulate_match(com_color)
+                    black_stone, white_stone = count_stone()
+                    if com_color == BLACK and black_stone > white_stone:
+                        win_cell_counter[column + (row * BOARD_SIZE)] += 1
+                    elif com_color == WHITE and white_stone > black_stone:
+                        win_cell_counter[column + (row * BOARD_SIZE)] += 1
+                    load_board()
+    maximum = 0
+    number = 0
+    for i in range(BOARD_SIZE ** 2):
+        if win_cell_counter[i] > maximum:
+            maximum = win_cell_counter[i]
+            number = i
+    row = int(number / 8)
+    column = number % 8
+
+    return row, column
+
+
+def save_board():
+    for row in range(BOARD_SIZE):
+        for column in range(BOARD_SIZE):
+            board_memory[row][column] = board[row][column]
+
+
+def load_board():
+    for row in range(BOARD_SIZE):
+        for column in range(BOARD_SIZE):
+            board[row][column] = board_memory[row][column]
+
+
+def simulate_match(com_color):
     while True:
-        row = rand.randint(0, BOARD_SIZE-1)
-        column = rand.randint(0, BOARD_SIZE-1)
-        if count_placeable(row, column, color) > NONE:
-            return row, column
+        if not judge_placeable(BLACK) and not judge_placeable(WHITE):
+            break
+
+        com_color = 3 - com_color
+
+        if judge_placeable(com_color):
+            while True:
+                row = rand.randint(0, BOARD_SIZE - 1)
+                column = rand.randint(0, BOARD_SIZE - 1)
+                if count_placeable(row, column, com_color) > 0:
+                    place_stone(row, column, com_color)
+                    break
 
 
 def click_board(e):
@@ -130,13 +183,13 @@ def click_board(e):
     cursor_row = int(e.y/80)
     cursor_column = int(e.x/80)
     if cursor_row > 7:
-        row = 7
+        cursor_row = 7
     if cursor_column > 7:
-        column = 7
+        cursor_column = 7
 
 
-def place_stone(row, column, color):
-    board[row][column] = color
+def place_stone(row, column, turn_color):
+    board[row][column] = turn_color
     for direction_y in range(-1, 2):
         for direction_x in range(-1, 2):
             count = 0
@@ -149,13 +202,13 @@ def place_stone(row, column, color):
                     break
                 if board[relative_y][relative_x] == NONE:
                     break
-                if board[relative_y][relative_x] == (3 - color):
+                if board[relative_y][relative_x] == (3 - turn_color):
                     count += 1
-                if board[relative_y][relative_x] == color:
+                if board[relative_y][relative_x] == turn_color:
                     for i in range(count):
                         relative_y -= direction_y
                         relative_x -= direction_x
-                        board[relative_y][relative_x] = color
+                        board[relative_y][relative_x] = turn_color
                     break
 
 
@@ -176,7 +229,7 @@ def draw_board():
     cvs.update()
 
 
-def count_placeable(row, column, color):
+def count_placeable(row, column, turn_color):
     if board[row][column] > NONE:
         return -1
     total = 0
@@ -192,9 +245,9 @@ def count_placeable(row, column, color):
                     break
                 if board[relative_y][relative_x] == NONE:
                     break
-                if board[relative_y][relative_x] == (3 - color):
+                if board[relative_y][relative_x] == (3 - turn_color):
                     count += 1
-                if board[relative_y][relative_x] == color:
+                if board[relative_y][relative_x] == turn_color:
                     total += count
                     break
     return total
@@ -212,10 +265,10 @@ def count_stone():
     return black, white
 
 
-def judge_placeable(color):
+def judge_placeable(turn_color):
     for row in range(BOARD_SIZE):
         for column in range(BOARD_SIZE):
-            if count_placeable(row, column, color) > NONE:
+            if count_placeable(row, column, turn_color) > NONE:
                 return True
     return False
 
